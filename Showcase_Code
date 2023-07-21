@@ -1,4 +1,5 @@
---This code lets players move either left or right when they tap the A and D keys
+--This code lets players move either left or right when they tap the A and D keys as their movement was disabled previously
+--It's like a subway surfers type movement
 
 userInputService = game:GetService("UserInputService")
 local tweenService = game:GetService("TweenService")
