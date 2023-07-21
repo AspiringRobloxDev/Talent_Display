@@ -1,0 +1,446 @@
+--Services
+
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local MarketPlaceService = game:GetService("MarketplaceService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local BadgeService = game:GetService("BadgeService")
+local rightDoorID = 2130486851
+local defaultValue = 0
+
+--Other Variables
+local quizDictionary = require(game.ServerScriptService:WaitForChild("Dictionary"))
+local DataStore2 = require(game.ServerScriptService:WaitForChild("MainModule"))
+local playersInLobbyZone = require(ReplicatedStorage.PlrsInLobbyZone)
+local doorsFolder = game.Workspace:WaitForChild("GameArea"):WaitForChild("Doors")
+local quizRoom = game.Workspace:WaitForChild("QuizRoom")
+local lobbySpawn = game.Workspace.Lobby.LobbySpawn
+local gameSpawn = game.Workspace.GameArea.GameSpawn
+local inRound = ReplicatedStorage.InRound
+local tweenGui = ReplicatedStorage.TweenGui
+local showWinner = ReplicatedStorage.ShowWinner
+local informEvent = ReplicatedStorage.InformEvent
+local warningEvent = ReplicatedStorage.WarningEvent
+local showLevelUp = game.ReplicatedStorage.ShowLevelUp
+local removeOccupant = ReplicatedStorage.RemoveOccupant
+local showCoinAmount = ReplicatedStorage.ShowCoinAmount
+local showDiamondAmount = ReplicatedStorage.ShowDiamondAmount
+local quizAskQuestion = ReplicatedStorage.QuizAskQuestion
+local quizCheckAnswer = ReplicatedStorage.QuizCheckAnswer
+local ownedTitles = ReplicatedStorage:WaitForChild("OwnedTitles")
+local warningEvent = ReplicatedStorage:WaitForChild("WarningEvent")
+local serverMessage = ReplicatedStorage:WaitForChild("ServerMessage")
+local cameraManipulation = ReplicatedStorage:WaitForChild("CameraManipulation")
+local updateGameLogicModules = ReplicatedStorage:WaitForChild("UpdateGameLogicModules")
+local playersInLobbyZone = require(ReplicatedStorage.PlrsInLobbyZone)
+local playersInGameZone = require(ReplicatedStorage.PlrsInGameZone)
+local tweenShopGui = ReplicatedStorage:WaitForChild("TweenShopGui")
+local chosenTitle = ReplicatedStorage:WaitForChild("ChosenTitle")
+local playSound = ReplicatedStorage:WaitForChild("PlaySound")
+local ATTRIBUTE_NAME = "TrapDoor"
+local earnedTitlesTable = nil
+local playerQuizBoard = nil
+local currentPlayers = nil
+local heartFrame = nil
+local HFChildren = nil
+local lastHeart = nil
+local findPlayer = nil
+local debounce = false
+local orderTable = {}
+
+updateGameLogicModules.OnServerEvent:Connect(function(player, zone, instruction)
+	if instruction == "add" then --if the instruction is to add
+
+		if zone == "GameZone" then --If the player is in the round
+			if not table.find(playersInGameZone, player) then
+				table.insert(playersInGameZone, player) --insert them into the gamezone table
+			end 
+		elseif zone == "LobbyZone" then --if player is in the lobby
+			if not table.find(playersInLobbyZone, player) then
+				table.insert(playersInLobbyZone, player)--insert the into the lobbyzone table
+			end
+		end
+
+	elseif instruction == "remove" then  --if instruction is to remove
+
+		if zone == "GameZone" then --If player is in the game 
+			if table.find(playersInGameZone, player) then --If they are in the table, remove them
+				findPlayer = table.find(playersInGameZone, player)
+				table.remove(playersInGameZone, findPlayer)
+			end
+		elseif zone == "LobbyZone" then --If player is in the lobby
+			if table.find(playersInLobbyZone, player) then --If they are in the lobby then remove them
+				findPlayer = table.find(playersInLobbyZone, player)
+				table.remove(playersInLobbyZone, findPlayer)
+			end
+		end
+
+	end
+end)
+
+local function onPromptEnded(promptObject, player)
+	--Door variables
+	local interactedDoor = promptObject.Parent.Parent.Parent --E to open door
+	local alive = player:WaitForChild("Alive")
+	local Base = interactedDoor.Door.Base
+	--Heart Variables
+	local playerScreenGui = player:WaitForChild("PlayerGui"):WaitForChild("ScreenGui")
+	heartFrame = playerScreenGui:WaitForChild("HeartFrame")
+	--Quiz Variables
+	local quizBoard = player:WaitForChild("PlayerGui"):WaitForChild("QuizGui"):WaitForChild("QuizBoard")
+	local Question = quizBoard:WaitForChild("Question")
+	local firstChoice = quizBoard:WaitForChild("FirstChoice")
+	local secondChoice = quizBoard:WaitForChild("SecondChoice")
+	local thirdChoice = quizBoard:WaitForChild("ThirdChoice")
+	local fourthChoice = quizBoard:WaitForChild("FourthChoice")
+	--Other Variables
+	local keyCardDenied = player:WaitForChild("PlayerGui"):WaitForChild("Sounds"):WaitForChild("SoundEffects"):WaitForChild("Keycard_Denied")
+	local playerCharacter = game.Workspace:FindFirstChild(player.Name)
+	local Humanoid = playerCharacter:FindFirstChild("Humanoid")
+
+	if inRound.Value == true and alive.Value == true then --If it's not intermission and they're not dead
+		if not interactedDoor:FindFirstChild("StarParticlesEffect") and not interactedDoor:GetAttribute(ATTRIBUTE_NAME) then
+			playSound:FireClient(player, false, keyCardDenied)
+			wait(0.1)
+			Base.BrickColor = BrickColor.new(158, 0, 0)
+			Base:WaitForChild("ProximityPrompt").Enabled = false
+
+			HFChildren = heartFrame:GetChildren()
+
+			if #HFChildren > 1 then --If they have 2 or more hearts the delete a heart based on it's position closest to the end of their screen.
+				for i, v in pairs(HFChildren) do
+					table.insert(orderTable, v.Position.X.Scale)
+				end
+
+				--Sort the Table
+				for _, value in pairs(orderTable) do
+					table.sort(orderTable, function(Info1, Info2)
+						local stat1 = Info1
+						local stat2 = Info2
+						return stat1 > stat2
+					end)
+				end
+
+				for i, v in pairs(HFChildren) do
+					if v.Position.X.Scale == orderTable[1] then
+						v:Destroy()
+						if not debounce then
+							warningEvent:FireClient(player, "Wrong door")
+							playerScreenGui:WaitForChild("Warning").Visible = true
+							debounce = true
+							wait(1)
+							playerScreenGui:WaitForChild("Warning").Visible = false
+							debounce = false
+						end
+					end
+				end
+
+				orderTable = {}
+			elseif #HFChildren == 1 then --If they're on their last heart then oof them!
+				heartFrame:FindFirstChildOfClass("ImageLabel"):Destroy()
+
+				if Humanoid then
+					Humanoid.Health = 0
+				end
+
+				if not debounce then
+					warningEvent:FireClient(player, "Wrong door")
+					playerScreenGui:WaitForChild("Warning").Visible = true
+					debounce = true
+					wait(1)
+					playerScreenGui:WaitForChild("Warning").Visible = false
+					debounce = false
+				end
+			end
+
+		elseif interactedDoor:GetAttribute(ATTRIBUTE_NAME) then --If they choose the door that takes them to the quiz
+			--Variables
+			local chairsFolder = quizRoom:WaitForChild("Chairs")
+			local playerGui = player:WaitForChild("PlayerGui")
+			local buttonClick = playerGui:WaitForChild("Sounds"):WaitForChild("SoundEffects"):WaitForChild("ButtonClick")
+			local char = player.Character
+			local chosenQuestions = {}
+			local randomQuestion = 0
+			local questionCounter = 0
+			local roundOver = false
+			local continueQuestions = nil
+			local rightAnswer = nil
+			local playerLeft = false
+			local reset = false
+			local situation = nil
+
+			local playerCFrame = char.HumanoidRootPart.CFrame
+
+			Base.BrickColor = BrickColor.new(158, 0, 0)
+			Base:WaitForChild("ProximityPrompt").Enabled = false
+
+			for i, chair in pairs(chairsFolder:GetChildren()) do --Loop through all the chairs
+				if chair.Seat.Occupant then --If the chair is occupied 
+					print("Player is already seating there") -- print 
+					print(chair.Seat.Occupant) --print
+				else --If chair is empty 
+					chair.Seat:Sit(Humanoid) --Sit player
+					local cameraPart = chair:WaitForChild("CameraPart")
+					cameraManipulation:FireClient(player, cameraPart) --This event changes player's camera pos
+					quizAskQuestion:FireClient(player, rightAnswer, quizDictionary, playerCFrame) --Pop up the quiz gui
+					tweenGui:FireClient(player, quizBoard, true) --tween the gui
+					break --No need to find more chairs/put the player in another chair --Exit the looping of chairs
+				end
+			end
+		else --They guessed the right door!
+			--Variables
+			local coinsDataStore = DataStore2("Coins", player)
+			local diamondsDataStore = DataStore2("Diamonds", player)
+			local winsDataStore = DataStore2("Wins", player)
+			local coinValue = 100
+			local diamondValue = 50
+			local coinValue2 = 20
+			local defaultValue = 0
+
+			interactedDoor:WaitForChild("StarParticlesEffect").Tickets.Enabled = true
+			Base:WaitForChild("ProximityPrompt").Enabled = false
+			Base.Color = Color3.fromRGB(2, 222, 83)
+
+			if not BadgeService:UserHasBadgeAsync(player.UserId, rightDoorID) then --If they haven't won the badge then
+				BadgeService:AwardBadge(player.UserId, rightDoorID)  --Award it to them
+			end
+
+			currentPlayers = game.Players:GetPlayers() --Get all the players in game
+
+			showWinner:FireAllClients(player.Name) --Tell clients who the winner is
+			
+			--Next if statement block checks if they own x2coin gamepass or x2diamond gamepass/both and either doubles their reward or not
+			if MarketPlaceService:UserOwnsGamePassAsync(player.UserId, 91065877) and MarketPlaceService:UserOwnsGamePassAsync(player.UserId, 91066341) then --They own both
+				informEvent:FireClient(player, player.Name, coinValue*2, diamondValue*2)	
+				coinsDataStore:Increment(100*2, defaultValue) --Double it if they have the x2 gamepass
+				showCoinAmount:FireClient(player, coinValue*2)
+				diamondsDataStore:Increment(50*2, defaultValue)
+				showDiamondAmount:FireClient(player, diamondValue*2)
+			elseif MarketPlaceService:UserOwnsGamePassAsync(player.UserId, 91065877) and not MarketPlaceService:UserOwnsGamePassAsync(player.UserId, 91066341) then --They own coins but not diamonds
+				informEvent:FireClient(player, player.Name, coinValue*2, diamondValue)	
+				coinsDataStore:Increment(100*2, defaultValue) --Double it if they have the x2 gamepass
+				showCoinAmount:FireClient(player, coinValue*2)
+				diamondsDataStore:Increment(50, defaultValue)
+				showDiamondAmount:FireClient(player, diamondValue)
+			elseif not MarketPlaceService:UserOwnsGamePassAsync(player.UserId, 91065877) and MarketPlaceService:UserOwnsGamePassAsync(player.UserId, 91066341) then --They own diamonds but not coins
+				informEvent:FireClient(player, player.Name, coinValue, diamondValue*2)
+				coinsDataStore:Increment(100, defaultValue) --Give them the normal amount
+				showCoinAmount:FireClient(player, coinValue)
+				diamondsDataStore:Increment(50*2, defaultValue)
+				showDiamondAmount:FireClient(player, diamondValue*2)
+			else  --They own none
+				informEvent:FireClient(player, player.Name, coinValue, diamondValue)
+				coinsDataStore:Increment(100, defaultValue) --Give them the normal amount
+				showCoinAmount:FireClient(player, coinValue)
+				diamondsDataStore:Increment(50, defaultValue)
+				showDiamondAmount:FireClient(player, diamondValue)
+			end
+
+			winsDataStore:Increment(1, defaultValue) --Award player a win in their data saving/leaderstat
+
+			for _, v in pairs(currentPlayers) do --Loop through current players
+				if game.Workspace:FindFirstChild(v.Name) then --If they're still in the game
+					local coinsDataStoreForPlayer = DataStore2("Coins", v)
+					if v.Name ~= player.Name then --If the player is not the winner then award them with less than the winner got
+						if MarketPlaceService:UserOwnsGamePassAsync(v.UserId, 91065877) then
+							coinsDataStoreForPlayer:Increment(20*2, defaultValue)
+							showCoinAmount:FireClient( v, coinValue2*2)
+							informEvent:FireClient( v, v.Name, coinValue2*2)
+						else
+							coinsDataStoreForPlayer:Increment(20, defaultValue)
+							showCoinAmount:FireClient( v, coinValue2)
+							informEvent:FireClient( v, v.Name, coinValue2)
+						end
+					end
+				end
+			end
+
+		end
+	end
+end
+
+ProximityPromptService.PromptTriggerEnded:Connect(onPromptEnded) --Listens for the proximityprompt event then calls function
+
+quizCheckAnswer.OnServerEvent:Connect(function(player, playerAnswerText, rightAnswer) --Checks if players answer is correct
+	playerQuizBoard = player:WaitForChild("PlayerGui"):WaitForChild("QuizGui"):WaitForChild("QuizBoard")
+	heartFrame = player:WaitForChild("PlayerGui"):WaitForChild("ScreenGui"):WaitForChild("HeartFrame")
+
+	if playerAnswerText ~= rightAnswer then --If they got the question wrong
+		--Humanoid.Sit = false
+		HFChildren = heartFrame:GetChildren()
+
+		if #HFChildren > 1 then If player has 2 or more hearts
+			for i, v in pairs(HFChildren) do
+				table.insert(orderTable, v.Position.X.Scale)
+			end
+
+			--Sort the Table
+			table.sort(orderTable, function(Info1, Info2)
+				local stat1 = Info1
+				local stat2 = Info2
+				return stat1 > stat2
+			end)
+
+			for i, v in pairs(HFChildren) do
+				if v.Position.X.Scale == orderTable[1] then --Chooses the heart closest to the screen to destroy
+					v:Destroy()
+					break
+				end
+			end
+
+			orderTable = {}
+		elseif #HFChildren == 1 then --They lose!
+			local lastHeart = heartFrame:FindFirstChildOfClass("ImageLabel")
+
+			if lastHeart then
+				lastHeart:Destroy() --Delete last heart
+				--reset = true
+				print("Player died")
+			end
+
+			cameraManipulation:FireClient(player, false, heartFrame) --Enable their camera
+			tweenGui:FireClient(player, playerQuizBoard, false) --Tween Gui down
+		end	
+	end
+end)
+
+removeOccupant.OnServerEvent:Connect(function(player, humanoid) --Remove the occupant from the chair they are sitting on
+	if humanoid then
+		if humanoid.SeatPart ~= nil then
+			if humanoid.SeatPart:FindFirstChild("SeatWeld") then
+				humanoid.SeatPart:FindFirstChild("SeatWeld"):Destroy()
+				wait(0.3)
+			end
+		end
+	end
+end)
+
+
+chosenTitle.OnServerEvent:Connect(function(player, title, warning) --Fires when players chooses to buy a title
+	local levelUpSound = player:WaitForChild("PlayerGui"):WaitForChild("Sounds"):WaitForChild("SoundEffects"):WaitForChild("LevelUpSound")
+	local earnedTitlesDataStore = DataStore2("EarnedTitles", player)
+	--Gets datastores
+	local coinsDataStore = DataStore2("Coins", player) 
+	local levelDataStore = DataStore2("Level", player)
+	local requiredLevel = 0
+	local amount = 0
+
+	--RoleChange Variables
+	local titlesTable = {"Noob", "Experienced", "Skilled", "UnderDog", "Pro", "Try Hard", "No Lifer"}
+	local titlesColorTable = {Color3.new(255,255,255), Color3.fromRGB(84, 252, 123), Color3.fromRGB(255, 170, 255), Color3.fromRGB(10, 113, 223), Color3.fromRGB(255, 192, 32), Color3.fromRGB(171, 0, 0), Color3.fromRGB(0, 0, 0)}
+	local character = player.Character or player.CharacterAdded:Wait()
+	local CloneGui = character:WaitForChild("Head"):WaitForChild("OverheadGui")
+	local GradientScript = CloneGui.Level.UIScript
+	local Gradient = CloneGui.Level.UIGradient
+
+	--Choose amount to charge based on title
+	if title == "Experienced" then
+		amount = 10000
+		requiredLevel = 10	
+	elseif title == "Skilled" then
+		amount = 20000
+		requiredLevel = 50
+	elseif title == "UnderDog" then
+		amount = 50000
+		requiredLevel = 100
+	elseif title == "Pro" then
+		amount = 75000
+		requiredLevel = 200
+	elseif title == "Try Hard" then
+		amount = 100000
+		requiredLevel = 500
+	elseif title == "No Lifer" then
+		amount = 200000
+		requiredLevel = 1000
+	end
+
+	print(amount, requiredLevel, title)
+	--If amount is not equal to zero.
+	if amount ~= 0 and requiredLevel ~= 0 then
+		if (levelDataStore:Get() >= requiredLevel) and (coinsDataStore:Get() >= amount) then --If they are eligible to buy the role
+			print("Eligible to buy role!")
+			coinsDataStore:Increment(-amount, defaultValue) --Reduce their coins
+			showCoinAmount:FireClient(player, -amount) --Show coin deduction
+
+			local function earnedTitlesUpdate() --This function updates the players Gui showing they now own the title, and gives it to them
+				earnedTitlesTable = earnedTitlesDataStore:Get()
+				wait()
+
+				if earnedTitlesTable ~= nil then
+					print(earnedTitlesTable, title)
+					if not table.find(earnedTitlesTable, title) then
+						table.insert(earnedTitlesTable, title)
+					end
+				else
+					earnedTitlesTable = {} --Make a table
+					table.insert(earnedTitlesTable, title) --Insert the title to the table
+					print(earnedTitlesTable, title)
+				end
+
+				return earnedTitlesTable
+			end
+
+			playSound:FireClient(player, false, levelUpSound) --Play level up sound
+			earnedTitlesDataStore:Update(earnedTitlesUpdate) --Update datastore
+			wait()
+			ownedTitles:FireClient(player, earnedTitlesTable)  --Update GUI
+			--Variables save the players past role text and color
+			local pastRoleText = CloneGui.Role.Text
+			local pastRoleColor = CloneGui.Role.TextColor3
+			--Role Change: This function updates their surface gui in game so other players know what role they have
+			local function RoleChange()
+				--[[if player.UserId == 1653814456 then --This is for me the developer
+					CloneGui.Role.Text = "Developer" --What my role should be
+					CloneGui.Role.TextColor3 = Color3.new(0, 0, 0) --Color
+					CloneGui.Role.Font = Enum.Font.GothamBold --Font
+					Gradient.Enabled = true --Give me rainbow gradient
+					--RoleGradient.Enabled = true  --I want it black
+					GradientScript.Disabled = false
+					--RoleScript.Disabled = false  --I need to disable the script too]]
+				if player.UserId == 705982033 or player.UserId == 1588782734 then --If it is either of my testers
+					CloneGui.Role.Text = "Tester" --Give them custom role
+					CloneGui.Role.TextColor3 = Color3.fromRGB(85, 255, 127) --Give them a color
+					CloneGui.Role.Font = Enum.Font.GothamBold --Change font
+				else --It's a casual player
+					local earnedTitlesDataStore = DataStore2("EarnedTitles", player):Get()
+					local highestRole = 1
+
+					if earnedTitlesDataStore ~= nil then
+						for _, role in pairs(earnedTitlesDataStore) do --Loop through plr's roles
+							for index, tableRole in pairs(titlesTable) do --Loop through set roles
+								--print(role, tableRole)
+								if role == tableRole then
+									--print(index)
+									if index > highestRole then
+										highestRole = index
+									end
+								end
+							end
+						end
+						CloneGui.Role.Text = titlesTable[highestRole] --The most prestige role they have in their datastore
+						CloneGui.Role.TextColor3 = titlesColorTable[highestRole] --Gives them their respective role
+						CloneGui.Level.TextColor3 = titlesColorTable[highestRole] --Changes color to the color of that role
+					else --It's a new/a player who is less than level 10
+						print("Default")
+						CloneGui.Role.Text = "Noob" --Noob role
+						CloneGui.Level.TextColor3 = Color3.new(255,255,255) --White
+					end
+				end
+
+				if MarketPlaceService:UserOwnsGamePassAsync(player.UserId, 91066593) then --If the player has the VIP gamepass
+					CloneGui.Role.Text = "[VIP] " ..CloneGui.Role.Text --Add VIP to their role text
+				end
+			end
+
+			RoleChange() --Call function
+			showLevelUp:FireClient(player, CloneGui.Role, pastRoleText, pastRoleColor) --Show the player's level up
+			serverMessage:FireAllClients(CloneGui.Role.Text, player.Name) --Inform the server through sending a message in chat
+		elseif levelDataStore:Get() < requiredLevel then --If they haven't reached the required level
+			warningEvent:FireClient(player, "You haven't reached the required level!") --Inform them
+			warning.Visible = true
+			wait(1.2)
+			warning.Visible = false
+		elseif coinsDataStore:Get() < amount then --If they don't have enough coins
+			tweenShopGui:FireClient(player) --Tween open the shop gui!
+		end
+	end
+end)
